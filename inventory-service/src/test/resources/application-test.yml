@@ -1,0 +1,24 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+  kafka:
+    listener:
+      concurrency: 1
+
+orderflow:
+  consumer-group: inventory-service-test
+  outbox:
+    poll-interval: PT0.2S
+    batch-size: 50
+    send-timeout-seconds: 10
+
+logging:
+  level:
+    com.orderflow: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
+    org.apache.kafka: WARN
+    kafka: WARN

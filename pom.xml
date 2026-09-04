@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.3.5</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.orderflow</groupId>
+  <artifactId>orderflow-parent</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+  <name>orderflow</name>
+  <description>Event-driven order fulfilment with a transactional outbox and an orchestrated saga</description>
+
+  <modules>
+    <module>common-events</module>
+    <module>common-messaging</module>
+    <module>order-service</module>
+    <module>payment-service</module>
+    <module>inventory-service</module>
+  </modules>
+
+  <properties>
+    <java.version>17</java.version>
+    <springdoc.version>2.6.0</springdoc.version>
+    <!--
+      Overrides Spring Boot 3.3.5's managed 1.19.8. That version bundles
+      docker-java 3.3.6, which negotiates Engine API 1.32; Docker Engine 29
+      accepts nothing below 1.40 and rejects it with an opaque HTTP 400 that
+      surfaces as "Could not find a valid Docker environment".
+    -->
+    <testcontainers.version>1.21.3</testcontainers.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.orderflow</groupId>
+        <artifactId>common-events</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.orderflow</groupId>
+        <artifactId>common-messaging</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+          <configuration>
+            <excludes>
+              <exclude>
+                <groupId>org.projectlombok</groupId>
+                <artifactId>lombok</artifactId>
+              </exclude>
+            </excludes>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/*IT.java</include>
+          </includes>
+          <!-- See the testcontainers.version comment above: same root cause. -->
+          <argLine>-Dapi.version=1.43</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>

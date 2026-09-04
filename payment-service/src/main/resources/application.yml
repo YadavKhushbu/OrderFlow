@@ -1,0 +1,81 @@
+spring:
+  application:
+    name: payment-service
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/orderflow_payments}
+    username: ${DB_USER:orderflow}
+    password: ${DB_PASSWORD:orderflow}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      connection-timeout: 3000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc.batch_size: 50
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 5
+      properties:
+        enable.idempotence: true
+        delivery.timeout.ms: 20000
+        request.timeout.ms: 5000
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        max.poll.records: 50
+    listener:
+      ack-mode: record
+      concurrency: 3
+
+orderflow:
+  consumer-group: payment-service
+  outbox:
+    poll-interval: PT0.5S
+    batch-size: 100
+    send-timeout-seconds: 10
+  payment:
+    # Deterministic decline rules stand in for a real provider. Anything above
+    # this ceiling is refused as INSUFFICIENT_FUNDS, and any customerRef
+    # containing DECLINE is always refused, so the compensation path can be
+    # demonstrated on demand rather than waited for.
+    decline-above-cents: ${DECLINE_ABOVE_CENTS:1000000}
+
+server:
+  port: ${PORT:8082}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  metrics:
+    tags:
+      application: payment-service
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{sagaId:-}] %logger{36} - %msg%n"
+  level:
+    com.orderflow: ${LOG_LEVEL:INFO}

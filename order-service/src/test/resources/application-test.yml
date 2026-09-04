@@ -1,0 +1,27 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+orderflow:
+  consumer-group: order-service-test
+  # One partition in tests. Ordering across partitions is not guaranteed, and a
+  # test that asserts on message order across three of them would be flaky for
+  # reasons that have nothing to do with the code under test.
+  topic-partitions: 1
+  outbox:
+    poll-interval: PT0.2S   # Faster than production so tests are not dominated
+    batch-size: 50          # by the relay's idle wait.
+    send-timeout-seconds: 10
+
+spring.kafka.listener.concurrency: 1
+
+logging:
+  level:
+    com.orderflow: INFO
+    org.testcontainers: WARN
+    com.github.dockerjava: WARN
+    org.apache.kafka: WARN
+    kafka: WARN
