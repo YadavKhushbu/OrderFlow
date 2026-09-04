@@ -40,6 +40,11 @@ spring:
       enable-auto-commit: false
       properties:
         max.poll.records: 50
+        # Default is 5 minutes. If a topic gains partitions after this group was
+        # assigned, nothing rebalances until the next refresh and messages on the
+        # new partitions are ignored until then. Ten seconds keeps that window
+        # short enough to be invisible.
+        metadata.max.age.ms: 10000
     listener:
       ack-mode: record
       concurrency: 3

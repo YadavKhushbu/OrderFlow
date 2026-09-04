@@ -274,6 +274,14 @@ The saga tests drive everything **through the bus**: orders go in through the se
 
 **One Postgres instance, one database per service.** Real deployments give each service its own instance. For local development the isolation that matters is that no service can read another's tables, and separate databases provide that at a fraction of the memory. Noted rather than hidden.
 
+**Topics are provisioned by `kafka-init`, and broker auto-creation is off.** This one was found by running the stack, not by a test — the integration tests all passed while the deployed system quietly stalled.
+
+With auto-creation enabled, whichever consumer subscribed first caused Kafka to create the topic with the broker default of **one** partition. The order service's admin client then grew it to three. But the consumer group had already been assigned against the old count, so it kept consuming only partition 0 — and every message the producer hashed to partition 1 or 2 sat there, unread, until the group's next metadata refresh five minutes later.
+
+The symptom was an order stuck in `INVENTORY_RESERVED` forever, with `AuthorizePayment` sitting on partition 2 and a healthy-looking consumer subscribed to partition 0. Nothing logged an error, because nothing had failed.
+
+Three changes, defence in depth: `KAFKA_AUTO_CREATE_TOPICS_ENABLE=false` so a wrong-sized topic cannot appear by accident; a one-shot `kafka-init` container that provisions every topic before any service starts; and `metadata.max.age.ms=10000` so a group notices partition changes in seconds rather than minutes. The general lesson is the one the code comments already claimed and the compose file did not honour: **topic partition counts are infrastructure, not application startup behaviour.**
+
 ---
 
 ## What I would do next

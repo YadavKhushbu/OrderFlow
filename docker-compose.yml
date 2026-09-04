@@ -37,12 +37,31 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Off deliberately. With auto-creation on, whichever consumer subscribes
+      # first silently creates the topic with the broker default of one
+      # partition; a later admin client then grows it to three, and any consumer
+      # group already assigned against the old count keeps consuming only
+      # partition 0 until its metadata refresh. Messages hashed to the new
+      # partitions simply sit there. Topics are provisioned by kafka-init below.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 10s
       timeout: 10s
       retries: 12
       start_period: 20s
+
+  # Provisions every topic once, before any service starts. See the comment in
+  # ops/create-topics.sh for why this is not left to the applications.
+  kafka-init:
+    image: apache/kafka:3.8.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./ops/create-topics.sh:/create-topics.sh:ro
+    entrypoint: ["/bin/sh", "/create-topics.sh"]
 
   order-service:
     build:
@@ -63,6 +82,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
   payment-service:
     build:
@@ -83,6 +104,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
   inventory-service:
     build:
@@ -100,6 +123,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
   # docker compose --profile observability up
   prometheus:
