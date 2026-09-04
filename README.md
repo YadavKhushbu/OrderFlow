@@ -260,6 +260,50 @@ The saga tests drive everything **through the bus**: orders go in through the se
 
 ---
 
+### The run
+
+`./mvnw verify` on a machine with Docker running. Every test, no skips:
+
+<details>
+<summary><b>20 passed, 0 failed, 0 skipped</b> — click for the full breakdown</summary>
+
+```text
+InventoryServiceIT  (6 tests, 21.4s)
+  PASS  reserveIsIdempotent                                          1.81s
+  PASS  partialAvailabilityReservesNothing                           0.10s
+  PASS  releaseIsIdempotent                                          0.10s
+  PASS  insufficientStockIsRefused                                   0.09s
+  PASS  reserveHoldsStock                                            0.06s
+  PASS  releaseOfUnknownSagaStillReplies                             0.02s
+
+PaymentServiceIT  (6 tests, 19.5s)
+  PASS  doesNotRefundWhatWasNeverCharged                             1.53s
+  PASS  authorises                                                   0.07s
+  PASS  declinesMarkedCustomers                                      0.03s
+  PASS  refunds                                                      0.10s
+  PASS  declinesLargeAmounts                                         0.03s
+  PASS  doesNotChargeTwice                                           0.07s
+
+OutboxIT  (4 tests, 21.6s)
+  PASS  messagesCommitWithTheOrder                                   1.18s
+  PASS  enqueueOutsideATransactionIsRefused                          0.01s
+  PASS  relayPublishesAndMarks                                       0.47s
+  PASS  rollbackLeavesNoMessage                                      0.02s
+
+SagaFlowIT  (4 tests, 6.9s)
+  PASS  happyPath                                                    1.62s
+  PASS  compensatesWhenPaymentFailsAfterReservation                  1.16s
+  PASS  cancelsWithoutCompensationWhenStockIsUnavailable             1.13s
+  PASS  duplicateReplyIsIgnored                                      3.01s
+
+Tests run: 20, Failures: 0, Errors: 0, Skipped: 0
+BUILD SUCCESS
+```
+
+</details>
+
+Each service starts its own Postgres and Kafka, which is most of the ~20s per class; the tests themselves run in milliseconds once the containers are warm. `duplicateReplyIsIgnored` is the slowest at 3.0s because it deliberately waits two seconds *after* the duplicate arrives to prove nothing happened — asserting an absence takes longer than asserting a presence.
+
 ## Design decisions
 
 **`202 Accepted`, not `201 Created`.** The order resource exists, but the work it represents has only been accepted. Returning "Created" would invite clients to treat a `PENDING` order as a confirmed sale.
