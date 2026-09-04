@@ -93,8 +93,21 @@
             <include>**/*Test.java</include>
             <include>**/*IT.java</include>
           </includes>
-          <!-- See the testcontainers.version comment above: same root cause. -->
-          <argLine>-Dapi.version=1.43</argLine>
+          <!--
+            Same root cause as the testcontainers.version override above:
+            docker-java negotiates Engine API 1.32, and Docker Engine 29 accepts
+            nothing below 1.40. Without this, Testcontainers reports "Could not
+            find a valid Docker environment" and every integration test silently
+            *skips* rather than failing, so the build stays green while proving
+            nothing at all.
+
+            Set as a system property rather than through the plugin's argLine,
+            because overriding argLine here would clobber the one JaCoCo and
+            similar agents inject - and that breakage is silent too.
+          -->
+          <systemPropertyVariables>
+            <api.version>1.43</api.version>
+          </systemPropertyVariables>
         </configuration>
       </plugin>
     </plugins>
