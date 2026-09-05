@@ -8,7 +8,7 @@ The interesting case is not the happy path. It is this one:
 
 Java 17 · Spring Boot 3.3 · Kafka · PostgreSQL · Testcontainers
 
-### ▶ Watch it compensate
+### Watch it compensate
 
 ![An order moving from PENDING through INVENTORY_RESERVED and COMPENSATING to CANCELLED](docs/saga-compensation.gif)
 
