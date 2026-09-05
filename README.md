@@ -8,6 +8,32 @@ The interesting case is not the happy path. It is this one:
 
 Java 17 · Spring Boot 3.3 · Kafka · PostgreSQL · Testcontainers
 
+### ▶ Watch it compensate
+
+```bash
+docker compose up --build     # then open http://localhost:8081
+```
+
+Three buttons, three paths through the saga. The middle one is the point — payment declined *after* stock was already reserved in another service:
+
+```
++0.34s  PENDING             order 2 · ₹600 · 202 Accepted
++1.16s  INVENTORY_RESERVED  reservation RES-2-b637f28e
++1.56s  COMPENSATING        releasing the stock already reserved
++1.95s  CANCELLED           Payment declined: INSUFFICIENT_FUNDS
+```
+
+Under two seconds, across three services and three databases, with no distributed transaction. Note that it passes *through* `COMPENSATING` rather than jumping to `CANCELLED`: the order is not finished until inventory confirms the stock went back.
+
+And it genuinely went back:
+
+```
+ GIZMO-LARGE  | on_hand 25 | reserved 0     ← compensated, stock returned
+ WIDGET-BLUE  | on_hand 100 | reserved 2    ← confirmed, hold correctly stands
+```
+
+**Not deployed, deliberately.** The three services would fit on a free tier; Kafka would not. There is no reliably free managed Kafka without a card, and a hosted saga demo is worth less than this one, which runs on any machine with Docker. See [what I would do next](#what-i-would-do-next).
+
 ---
 
 ## Contents

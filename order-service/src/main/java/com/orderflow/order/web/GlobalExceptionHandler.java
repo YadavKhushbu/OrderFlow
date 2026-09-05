@@ -12,6 +12,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.time.Instant;
 import java.util.List;
@@ -54,6 +55,24 @@ public class GlobalExceptionHandler {
         // is a client error, not a server fault.
         return build(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST",
                 "Request could not be processed: " + e.getMessage(), request, null);
+    }
+
+    /**
+     * A request for something that is not there.
+     *
+     * <p>Without this, Spring's {@code NoResourceFoundException} falls through to
+     * the catch-all below and becomes a 500 with an ERROR log line. Browsers ask
+     * every site for {@code /favicon.ico}, so that single omission turns an
+     * ordinary page visit into a logged server error and inflates the error rate
+     * that alerting watches.
+     *
+     * <p>Logged at debug: a 404 is information for the caller, not an incident.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<OrderDtos.ApiError> handleMissingResource(NoResourceFoundException e,
+                                                                    HttpServletRequest request) {
+        log.debug("No resource at {}", request.getRequestURI());
+        return build(HttpStatus.NOT_FOUND, "NOT_FOUND", "No resource at this path", request, null);
     }
 
     @ExceptionHandler(Exception.class)

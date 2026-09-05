@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OrderFlow — saga demo</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --dim:#8b949e;
+    --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149; --idle:#21262d;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font:15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { padding:20px 24px; border-bottom:1px solid var(--line);
+    display:flex; gap:16px; align-items:baseline; flex-wrap:wrap; }
+  header h1 { margin:0; font-size:19px; }
+  header .sub { color:var(--dim); font-size:13px; }
+  header a { color:var(--accent); font-size:13px; text-decoration:none; }
+  header a:hover { text-decoration:underline; }
+  .wrap { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,440px); gap:24px; padding:24px; align-items:start; }
+  @media (max-width:1050px){ .wrap { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:18px; margin-bottom:20px; }
+  .card h2 { margin:0 0 4px; font-size:15px; }
+  .card p.hint { margin:0 0 14px; color:var(--dim); font-size:13px; }
+  button { font:inherit; color:var(--text); background:#21262d; border:1px solid var(--line);
+    border-radius:6px; padding:9px 14px; cursor:pointer; text-align:left; }
+  button:hover:not(:disabled) { border-color:var(--dim); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button b { display:block; font-size:13.5px; }
+  button span { display:block; color:var(--dim); font-size:11.5px; font-family:var(--mono); margin-top:2px; }
+  .presets { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; }
+  .ok-btn:hover { border-color:var(--good); } .warn-btn:hover { border-color:var(--bad); }
+
+  /* ---- the state machine ---- */
+  .machine { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin:6px 0 18px; }
+  .state { padding:8px 12px; border-radius:6px; border:1px solid var(--line); background:var(--idle);
+    font-family:var(--mono); font-size:11.5px; color:var(--dim); white-space:nowrap; transition:all .25s; }
+  .state.done    { border-color:#2d5a3d; background:#12261a; color:var(--good); }
+  .state.current { border-color:var(--accent); background:#0d2440; color:var(--accent);
+                   box-shadow:0 0 0 3px rgba(88,166,255,.12); }
+  .state.fail    { border-color:#6b2b2f; background:#2b1416; color:var(--bad); }
+  .state.compensating { border-color:#6b5019; background:#2b2211; color:var(--warn); }
+  .arrow { color:var(--line); font-size:13px; }
+
+  .timeline { font-family:var(--mono); font-size:12px; }
+  .tl { display:flex; gap:10px; padding:6px 0; border-bottom:1px solid #21262d; align-items:baseline; }
+  .tl .t { color:var(--dim); min-width:62px; }
+  .tl .s { font-weight:600; }
+  .tl .note { color:var(--dim); }
+
+  #log { font-family:var(--mono); font-size:11.5px; max-height:520px; overflow-y:auto; }
+  #log .entry { padding:5px 0; border-bottom:1px solid #21262d; }
+  #log .m { color:var(--accent); font-weight:600; }
+  #log .ok { color:var(--good); } #log .err { color:var(--bad); }
+  #log pre { margin:3px 0 0; white-space:pre-wrap; word-break:break-all; color:var(--dim); }
+  .banner { padding:10px 12px; border-radius:6px; font-size:13px; margin-bottom:14px; display:none; }
+  .banner.show { display:block; }
+  .banner.ok { background:#12261a; border:1px solid #2d5a3d; }
+  .banner.bad { background:#2b1416; border:1px solid #6b2b2f; }
+  .banner.busy { background:#1c2333; border:1px solid #2f4574; }
+  code { font-family:var(--mono); font-size:12px; color:var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>OrderFlow</h1>
+  <span class="sub">an order across three services, with no distributed transaction</span>
+  <span style="flex:1"></span>
+  <a href="/swagger-ui.html">API docs →</a>
+  <a href="https://github.com/YadavKhushbu/OrderFlow">source →</a>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Place an order</h2>
+      <p class="hint">
+        Each button produces a different path through the saga. The API returns <code>202 Accepted</code>
+        immediately — inventory and payment run asynchronously over Kafka, so what you watch below is
+        the order service reacting to replies as they arrive.
+      </p>
+      <div class="presets">
+        <button class="ok-btn"   data-preset="happy">
+          <b>Order that confirms</b><span>2 × WIDGET-BLUE @ ₹99 = ₹198</span></button>
+        <button class="warn-btn" data-preset="decline">
+          <b>Payment declined after stock reserved</b><span>2 × GIZMO-LARGE = ₹600, over the ₹500 limit</span></button>
+        <button class="warn-btn" data-preset="oos">
+          <b>Out of stock</b><span>99 × LOW-STOCK-1 (only 1 exists)</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Saga state</h2>
+      <div id="banner" class="banner"></div>
+      <div class="machine" id="machine"></div>
+      <div class="timeline" id="timeline"></div>
+    </div>
+
+    <div class="card">
+      <h2>Why the failure path is the interesting one</h2>
+      <p class="hint" style="margin:0">
+        When payment is declined, stock has <em>already</em> been reserved in another service and another
+        database. There is no transaction to roll back, so the order service must explicitly undo it: it
+        emits <code>ReleaseInventory</code> and holds the order at <b>COMPENSATING</b> until inventory
+        confirms. Only then does it become <b>CANCELLED</b>. If the process died in that window, the
+        database would still show the truth — stock is held — rather than a cancelled order with
+        inventory silently stranded against it.
+      </p>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Live API traffic</h2>
+    <p class="hint">Every request this page makes. Polling is how a client learns the outcome of an asynchronous flow.</p>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+const PRESETS = {
+  happy:   { customerRef:'demo-happy',   lines:[{ sku:'WIDGET-BLUE',  quantity:2,  unitPriceCents:9900  }] },
+  // Deliberately NOT named "...decline": the payment service also refuses any
+  // customerRef containing DECLINE, and that rule firing first would make the
+  // button's stated reason (the amount) a lie about what actually happened.
+  decline: { customerRef:'demo-bigorder', lines:[{ sku:'GIZMO-LARGE',  quantity:2,  unitPriceCents:30000 }] },
+  oos:     { customerRef:'demo-oos',     lines:[{ sku:'LOW-STOCK-1',  quantity:99, unitPriceCents:100   }] }
+};
+
+// The full state space. Which of the two terminal routes is drawn depends on
+// what actually happens, so the diagram matches the run rather than the docs.
+const HAPPY_PATH = ['PENDING','INVENTORY_RESERVED','CONFIRMED'];
+const COMP_PATH  = ['PENDING','INVENTORY_RESERVED','COMPENSATING','CANCELLED'];
+const FAIL_PATH  = ['PENDING','CANCELLED'];
+
+let polling = null, t0 = 0, seen = [];
+
+function log(method, path, status, body) {
+  const el = document.createElement('div');
+  el.className = 'entry';
+  el.innerHTML = `<span class="m">${method}</span> ${path} <span class="${status<300?'ok':'err'}">${status}</span>`;
+  if (body !== undefined) {
+    const pre = document.createElement('pre');
+    const t = typeof body === 'string' ? body : JSON.stringify(body);
+    pre.textContent = t.length > 260 ? t.slice(0,260) + '…' : t;
+    el.appendChild(pre);
+  }
+  const box = $('#log'); box.prepend(el);
+  while (box.children.length > 50) box.lastChild.remove();
+}
+
+function banner(msg, kind) {
+  const el = $('#banner');
+  el.className = 'banner show ' + kind;
+  el.innerHTML = msg;
+}
+
+function drawMachine(current, path) {
+  const idx = path.indexOf(current);
+  $('#machine').innerHTML = path.map((s, i) => {
+    let cls = 'state';
+    if (i < idx) cls += ' done';
+    else if (i === idx) {
+      cls += s === 'CANCELLED' ? ' fail' : s === 'COMPENSATING' ? ' compensating'
+           : s === 'CONFIRMED' ? ' done' : ' current';
+    }
+    return `<span class="${cls}">${s}</span>` + (i < path.length - 1 ? '<span class="arrow">→</span>' : '');
+  }).join('');
+}
+
+function pathFor(states) {
+  if (states.includes('COMPENSATING')) return COMP_PATH;
+  if (states.includes('INVENTORY_RESERVED')) return HAPPY_PATH;
+  if (states.includes('CANCELLED')) return FAIL_PATH;
+  return HAPPY_PATH;
+}
+
+function addTimeline(state, note) {
+  const ms = Date.now() - t0;
+  const el = document.createElement('div');
+  el.className = 'tl';
+  const colour = state === 'CANCELLED' ? 'var(--bad)'
+    : state === 'COMPENSATING' ? 'var(--warn)'
+    : state === 'CONFIRMED' ? 'var(--good)' : 'var(--accent)';
+  el.innerHTML = `<span class="t">+${(ms/1000).toFixed(2)}s</span>
+    <span class="s" style="color:${colour}">${state}</span>
+    <span class="note">${note || ''}</span>`;
+  $('#timeline').append(el);
+}
+
+async function place(kind) {
+  clearInterval(polling);
+  document.querySelectorAll('[data-preset]').forEach(b => b.disabled = true);
+  $('#timeline').innerHTML = '';
+  seen = [];
+  t0 = Date.now();
+  banner('Placing the order — the server may be cold, so give it a moment.', 'busy');
+  drawMachine('PENDING', kind === 'oos' ? FAIL_PATH : kind === 'decline' ? COMP_PATH : HAPPY_PATH);
+
+  let created;
+  try {
+    const res = await fetch('/api/v1/orders', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(PRESETS[kind])
+    });
+    created = await res.json();
+    log('POST', '/api/v1/orders', res.status, created);
+    if (!res.ok) throw new Error(created.message || 'rejected');
+  } catch (e) {
+    banner('Could not reach the API: ' + e.message, 'bad');
+    document.querySelectorAll('[data-preset]').forEach(b => b.disabled = false);
+    return;
+  }
+
+  seen.push(created.status);
+  addTimeline(created.status, `order ${created.id} · ₹${(created.totalCents/100).toFixed(0)} · 202 Accepted`);
+  banner(`Order ${created.id} accepted as <b>PENDING</b>. The saga is now running over Kafka — watch it advance.`, 'busy');
+
+  // Poll, because that is genuinely how a client observes an async flow. Each
+  // change of status is a saga reply that has come back over the bus.
+  const started = Date.now();
+  polling = setInterval(async () => {
+    const res = await fetch(`/api/v1/orders/${created.id}`);
+    const o = await res.json();
+
+    if (o.status !== seen[seen.length - 1]) {
+      log('GET', `/api/v1/orders/${created.id}`, res.status, o);
+      seen.push(o.status);
+      const note = o.status === 'INVENTORY_RESERVED' ? `reservation ${o.reservationRef}`
+        : o.status === 'CONFIRMED' ? `payment ${o.paymentRef}`
+        : o.status === 'COMPENSATING' ? 'releasing the stock already reserved'
+        : o.status === 'CANCELLED' ? o.failureReason : '';
+      addTimeline(o.status, note);
+      drawMachine(o.status, pathFor(seen));
+    }
+
+    if (o.status === 'CONFIRMED') {
+      clearInterval(polling);
+      banner(`<b>Confirmed.</b> Stock reserved and payment taken across two services and two databases, with no distributed transaction.`, 'ok');
+      done();
+    } else if (o.status === 'CANCELLED') {
+      clearInterval(polling);
+      const compensated = seen.includes('COMPENSATING');
+      banner(compensated
+        ? `<b>Cancelled, and compensated.</b> Payment was declined after stock had already been reserved, so the saga emitted <code>ReleaseInventory</code> and waited for confirmation before finishing. The stock went back.`
+        : `<b>Cancelled at the first step.</b> Nothing was reserved and nothing was charged, so there was nothing to undo — no compensation was emitted, which is the correct behaviour rather than a missing one.`,
+        compensated ? 'bad' : 'bad');
+      done();
+    } else if (Date.now() - started > 60000) {
+      clearInterval(polling);
+      banner('Gave up waiting after 60s. Are all three services and Kafka running?', 'bad');
+      done();
+    }
+  }, 400);
+}
+
+function done() {
+  document.querySelectorAll('[data-preset]').forEach(b => b.disabled = false);
+}
+
+document.querySelectorAll('[data-preset]').forEach(b =>
+  b.onclick = () => place(b.dataset.preset));
+
+drawMachine('', HAPPY_PATH);
+banner('Pick one of the three orders above. The middle one is the interesting case.', 'busy');
+</script>
+</body>
+</html>
