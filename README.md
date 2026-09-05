@@ -10,6 +10,10 @@ Java 17 · Spring Boot 3.3 · Kafka · PostgreSQL · Testcontainers
 
 ### ▶ Watch it compensate
 
+![An order moving from PENDING through INVENTORY_RESERVED and COMPENSATING to CANCELLED](docs/saga-compensation.gif)
+
+*Payment declined after stock was already reserved. The order passes through `COMPENSATING` and only reaches `CANCELLED` once inventory confirms the stock went back — about two seconds, across three services.*
+
 ```bash
 docker compose up --build     # then open http://localhost:8081
 ```
